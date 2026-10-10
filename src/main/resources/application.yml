@@ -1,0 +1,35 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+
+spring:
+  application:
+    name: bank-simulator
+  
+  datasource:
+    url: jdbc:postgresql://localhost:5432/bank_simulator_db
+    username: postgres
+    password: SJS123,dec
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+app:
+  jwt:
+    # 256-bit (32-byte) base64 encoded secret key for HS256 algorithm
+    secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    expiration-ms: 86400000 # 24 hours in milliseconds
+
+  admin:
+    initial:
+      username: admin
+      password: Admin@123

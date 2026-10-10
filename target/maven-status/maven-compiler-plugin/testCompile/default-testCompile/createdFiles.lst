@@ -1,0 +1,11 @@
+com\bank\simulator\LedgerAndAuditTests.class
+com\bank\simulator\IdempotencyTests.class
+com\bank\simulator\SecurityHardeningTests.class
+com\bank\simulator\ClientAndAccountManagementTests.class
+com\bank\simulator\AcidRollbackTests.class
+com\bank\simulator\MoneyTransferTests.class
+com\bank\simulator\ConcurrencyAndLockingTests.class
+com\bank\simulator\AuthAndAuthorizationTests.class
+com\bank\simulator\MoneyTransferTests$TestUserAccount.class
+com\bank\simulator\AcidRollbackTests$TestUserAccount.class
+com\bank\simulator\ConcurrencyAndLockingTests$TestUserAccount.class
