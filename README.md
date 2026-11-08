@@ -1,198 +1,120 @@
-# Bank Transaction Simulator (Spring Boot + PostgreSQL)
+# Bank Transaction Simulator
 
-A secure, reliable, high-integrity backend enterprise banking transaction simulation built with Spring Boot, PostgreSQL, Spring Security, and JPA. Designed specifically to demonstrate enterprise financial backend principles including ACID compliance, concurrency control, idempotency, double-entry ledger bookkeeping, audit logging, rate limiting, and security hardening for technical interview discussions.
+A secure banking transaction simulation backend built using **Java, Spring Boot, Spring Security, and PostgreSQL**. Implements reliable money transfers with ACID transactions, concurrency control, idempotency, and double-entry bookkeeping.
 
----
+## Features
 
-## 1. Project Purpose
-The Bank Transaction Simulator models real-world core banking transfer mechanisms, administrative controls, financial ledgers, and transaction security. It provides a non-real-money environment to demonstrate transactional guarantees, race condition mitigation, and security best practices.
+- JWT-based authentication and role-based authorization.
+- Client and bank account management.
+- Money transfers, deposits, and withdrawals.
+- ACID transaction management and rollback.
+- Pessimistic locking to prevent race conditions.
+- Idempotency to prevent duplicate transactions.
+- Double-entry ledger bookkeeping.
+- Audit logging for transaction traceability.
+- Rate limiting and brute-force login protection.
+- Controlled retry and exception handling.
 
----
+## Tech Stack
 
-## 2. Architecture
-The project follows a clean layered enterprise architecture:
-
-```
-[ Clients / Postman / Tests ]
-              │ (HTTPS / REST)
-              ▼
-    ┌───────────────────┐
-    │  Spring Security  │ (JWT Filter, RateLimitFilter)
-    └─────────┬─────────┘
-              ▼
-    ┌───────────────────┐
-    │  REST Controllers │ (Client, Admin, Auth)
-    └─────────┬─────────┘
-              ▼
-    ┌───────────────────┐
-    │   Service Layer   │ (Transfer, Idempotency, Ledger, Audit, BruteForce)
-    └─────────┬─────────┘
-              ▼
-    ┌───────────────────┐
-    │  Data Repositories│ (JPA Repositories, Pessimistic Locking)
-    └─────────┬─────────┘
-              ▼
-    ┌───────────────────┐
-    │ PostgreSQL Database│ (Enforced FKs, Unique Constraints, Check Constraints)
-    └───────────────────┘
-```
-
----
-
-## 3. Technologies Used
-- **Language & Runtime:** Java 21 / OpenJDK 25
+- **Language:** Java 21
 - **Framework:** Spring Boot 3.4.3
-- **Security:** Spring Security 6.4.3, JJWT (io.jsonwebtoken 0.12.6), BCrypt
-- **Persistence:** Spring Data JPA / Hibernate 6.6.8
+- **Security:** Spring Security, JWT, BCrypt
 - **Database:** PostgreSQL 17
-- **Validation:** Jakarta Bean Validation
-- **Testing:** JUnit 5, MockMvc, Spring Boot Test
+- **ORM:** Spring Data JPA, Hibernate
+- **Build Tool:** Maven
+- **Testing:** JUnit 5, Spring Boot Test, MockMvc
 
----
+## Architecture
 
-## 4. Authentication Flow
-1. Client sends POST `/auth/login` with `username` and `password`.
-2. System checks `BruteForceProtectionService`: if 5 consecutive failures occur within 15 minutes, user is locked.
-3. Credentials are verified using BCrypt via Spring Security `AuthenticationManager`.
-4. On success, a signed JWT token containing subject (`username`) and role (`BANK_ADMIN` or `CLIENT`) is generated with a 24-hour expiration.
-5. On failure, generic `"Invalid credentials"` error is returned, preventing username enumeration.
+The application follows a layered architecture:
 
----
-
-## 5. Authorization Flow
-- Stateless authorization via `JwtAuthenticationFilter` on every request.
-- Role-based endpoints (`hasRole('BANK_ADMIN')`, `hasRole('CLIENT')`).
-- Server-side ownership verification: Clients cannot specify `senderAccountId` or access another user's balance/transactions; the authenticated user is extracted directly from the JWT `SecurityContextHolder`.
-
----
-
-## 6. Client / Account Creation Flow
-1. Admin posts to POST `/admin/clients` with `username` and `password`.
-2. Client `User` entity is created with `Role.CLIENT` and status `ACTIVE`.
-3. Unique 12-digit account number is generated via `AccountNumberGeneratorService`.
-4. `BankAccount` entity is created with `0.00` balance and `ACTIVE` status.
-5. Audit log events (`CLIENT_CREATED`, `ACCOUNT_CREATED`) are persisted.
-
----
-
-## 7. Money Transfer Flow
-```
-Client POST /client/transfers + Idempotency-Key
-       │
-       ▼
-Check Idempotency Cache (Return cached response if existing)
-       │
-       ▼
-Reserve Idempotency Key in Database
-       │
-       ▼
-Execute Transaction (Deterministic Order Lock min(id) -> max(id))
-       │
-       ├─► Validate Sender & Receiver Status (ACTIVE)
-       ├─► Check Balance sufficiency (amount > 0, sender.balance >= amount)
-       ├─► Execute Debit & Credit
-       ├─► Create Transaction Record (SUCCESS)
-       ├─► Create Double-Entry Ledger (DEBIT + CREDIT)
-       └─► Audit Log Success Event
-       │
-       ▼
-Record Response in Idempotency Cache & Return HTTP 201 Created
+```text
+Client (Postman)
+      |
+      v
+Spring Security (JWT)
+      |
+      v
+REST Controllers
+      |
+      v
+Service Layer
+      |
+      v
+Repository Layer
+      |
+      v
+PostgreSQL
 ```
 
----
+## Database Tables
 
-## 8. ACID and Rollback
-- Money transfers are annotated with `@Transactional`.
-- If an exception occurs (e.g., receiver credit failure or unexpected runtime error), Spring's transaction manager triggers a full database rollback.
-- Debit, credit, transaction record creation, ledger entries, and audit logs succeed atomically or fail completely together.
+- `users` – User credentials, roles, and status.
+- `bank_accounts` – Account details and balances.
+- `transactions` – Financial transaction records.
+- `ledger_entries` – Debit and credit entries.
+- `idempotency_keys` – Duplicate request prevention.
+- `audit_logs` – System activity records.
 
----
+## Getting Started
 
-## 9. Concurrency Problem (Race Conditions)
-Without lock isolation, simultaneous transfer requests from Account A (₹1,000) for ₹800 each might both read balance ₹1,000 concurrently, resulting in a illegal negative balance (₹-600).
+### Prerequisites
 
----
+- Java 21
+- PostgreSQL 17
+- Maven
 
-## 10. Pessimistic Locking
-- Uses JPA `@Lock(LockModeType.PESSIMISTIC_WRITE)` on `findByIdWithLock`.
-- PostgreSQL executes `SELECT ... FOR UPDATE` (or `FOR NO KEY UPDATE`), blocking concurrent transactions until the lock holder commits.
-- **Deterministic Lock Ordering:** Accounts are locked in deterministic order (`Math.min(idA, idB)` first, then `Math.max(idA, idB)`), eliminating circular wait conditions and preventing deadlocks.
-- `entityManager.refresh(...)` ensures the latest committed balance is reloaded from PostgreSQL under the acquired lock.
+### 1. Clone the repository
 
----
+```bash
+git clone <YOUR_REPOSITORY_URL>
+cd bank-transaction-simulator
+```
 
-## 11. Idempotency
-- Requests accept an `Idempotency-Key` header.
-- Unique key constraint in the `idempotency_keys` database table prevents concurrent duplicate processing.
-- Completed responses are serialized and cached in PostgreSQL, allowing retried client requests to receive the identical response without duplicate money movement.
+### 2. Create the database
 
----
+```sql
+CREATE DATABASE bank_simulator_db;
+```
 
-## 12. Ledger (Double-Entry Bookkeeping)
-- Every successful transfer creates two immutable `LedgerEntry` records:
-  - Account A: `DEBIT` ₹X
-  - Account B: `CREDIT` ₹X
-- System-wide constraint: `Total DEBIT == Total CREDIT` at all times.
+### 3. Configure database credentials
 
----
+Update `src/main/resources/application.yml` with your PostgreSQL connection details.
 
-## 13. Audit Logging
-- System events (`LOGIN_SUCCESS`, `LOGIN_FAILURE`, `TRANSFER_SUCCESS`, `TRANSFER_FAILED`, `ACCOUNT_BLOCKED`, etc.) are captured in `audit_logs`.
-- Sensitive information (passwords, JWT secrets, plain tokens) is strictly excluded.
+Keep database passwords and JWT secrets in environment variables rather than committing them to GitHub.
 
----
+### 4. Run the application
 
-## 14. Failure Handling
-- **Permanent Failures:** Business rule violations (insufficient balance, blocked account, invalid account number) fail immediately without retry.
-- **Transient Failures:** Deadlocks or lock acquisition timeouts trigger a controlled retry loop (up to 3 attempts with exponential backoff).
+```bash
+mvn spring-boot:run
+```
 
----
+The application runs at `http://localhost:8080`.
 
-## 15. Retry Mechanism
-- Controlled retry loop up to 3 attempts.
-- Protected by idempotency reservation so retries never cause duplicate money movement.
+## Testing
 
----
+Run the automated integration tests using:
 
-## 16. Rate Limiting
-- `RateLimitFilter` uses a sliding-window counter (100 requests/minute for transfer/login).
-- Exceeding limit returns `HTTP 429 TOO MANY REQUESTS`.
+```bash
+mvn test
+```
 
----
+The test suite covers:
 
-## 17. Brute-Force Login Protection
-- `BruteForceProtectionService` locks user accounts after 5 failed login attempts for 15 minutes.
-- Successful login resets the failure counter.
+- Authentication and authorization.
+- Client and account management.
+- Money transfer operations.
+- ACID rollback.
+- Concurrency and pessimistic locking.
+- Idempotency.
+- Ledger and audit logging.
+- Security and rate limiting.
 
----
+## Key Highlights
 
-## 18. Security Decisions
-- Passwords hashed with BCrypt.
-- Stateless JWT authentication; CSRF disabled safely for REST API.
-- OWASP security headers (`X-Content-Type-Options`, `X-Frame-Options: DENY`, `X-XSS-Protection`) enabled.
-- Stack traces swallowed in production exception handler (`GlobalExceptionHandler`).
-
----
-
-## 19. Database Design & Tables
-- `users`: User identity, password hash, role (`BANK_ADMIN`/`CLIENT`), status (`ACTIVE`/`BLOCKED`/`INACTIVE`).
-- `bank_accounts`: Unique 12-digit account numbers, `BigDecimal` balance (numeric 19,2), status.
-- `transactions`: Transfer/deposit/withdrawal reference, sender/receiver FKs, amount, status (`PENDING`/`SUCCESS`/`FAILED`).
-- `ledger_entries`: Foreign key to transaction & account, entry type (`DEBIT`/`CREDIT`), amount.
-- `idempotency_keys`: Unique key string, user FK, transaction reference, response payload cache.
-- `audit_logs`: Username, action, entity type, entity ID, description, result, timestamp.
-
----
-
-## 20. Testing Strategy
-37 automated integration tests in JUnit 5 & Spring Boot Test:
-- Authentication & Authorization
-- Client & Account Management
-- Money Transfer Validation & Balances
-- ACID Rollback Verification
-- Concurrency & Pessimistic Locking
-- Database Idempotency
-- Double-Entry Ledger & Audit Logging
-- Security Hardening (Rate Limiting, Brute Force, Ownership Protection)
-
----
+- Ensures financial data consistency through ACID transactions.
+- Prevents concurrent balance update conflicts using pessimistic locking.
+- Avoids duplicate money movements through database-backed idempotency.
+- Maintains financial records using double-entry bookkeeping.
+- Enforces secure access through JWT and role-based authorization.
